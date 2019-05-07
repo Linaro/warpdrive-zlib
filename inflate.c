@@ -202,6 +202,7 @@ int stream_size;
     int ret;
     struct inflate_state FAR *state;
 
+#if 0
     ret = hisi_inflateInit2_(strm, windowBits, version, stream_size);
     if (!ret) {
 	strm->is_wd = 1;
@@ -210,6 +211,9 @@ int stream_size;
     } else {
         strm->is_wd = 0;
     }
+#else
+    strm->is_wd = 0;
+#endif
 
     if (version == Z_NULL || version[0] != ZLIB_VERSION[0] ||
         stream_size != (int)(sizeof(z_stream)))
@@ -1225,6 +1229,7 @@ int flush;
             if (state->wrap) {
                 NEEDBITS(32);
                 out -= left;
+fprintf(stderr, "#%s, %d, in:0x%x, have:0x%x, strm->next_in:0x%x, strm->avail_in:%d\n", __func__, __LINE__, in, have, strm->next_in, strm->avail_in);
                 if (!strm->is_wd) {
                     strm->total_out += out;
                     state->total += out;
@@ -1321,6 +1326,7 @@ z_streamp strm;
 	strm->is_wd = 0;
 	hisi_inflateEnd(strm);
     }
+fprintf(stderr, "#%s, %d, strm->total_in:%d, strm->total_out:%d\n", __func__, __LINE__, strm->total_in, strm->total_out);
     if (inflateStateCheck(strm))
         return Z_STREAM_ERROR;
     state = (struct inflate_state FAR *)strm->state;

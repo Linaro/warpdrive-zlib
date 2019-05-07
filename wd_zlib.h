@@ -39,6 +39,7 @@ extern int hisi_deflateInit2_(z_stream *zstrm, int level, int method,
 		     const char *version, int stream_size);
 extern int hisi_deflate(z_stream *zstrm, int flush);
 extern int hisi_deflateEnd(z_stream *zstrm);
+extern int hisi_deflateParams(z_stream *zstrm, int level, int strategy);
 
 
 extern int hisi_inflateInit2_(z_stream *zstrm, int windowBits,

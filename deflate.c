@@ -257,6 +257,7 @@ int ZEXPORT deflateInit2_(strm, level, method, windowBits, memLevel, strategy,
 
     int ret;
 
+#if 1
     ret = hisi_deflateInit2_(strm, level, Z_DEFLATED, windowBits,
 			 DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY,
 			 version, stream_size);
@@ -267,6 +268,9 @@ int ZEXPORT deflateInit2_(strm, level, method, windowBits, memLevel, strategy,
     } else {
         strm->is_wd = 0;
     }
+#else
+    strm->is_wd = 0;
+#endif
 
     /* We overlay pending_buf and d_buf+l_buf. This works since the average
      * output size for (length,distance) codes is <= 24 bits.
@@ -593,6 +597,7 @@ int ZEXPORT deflateParams(strm, level, strategy)
     if (deflateStateCheck(strm)) return Z_STREAM_ERROR;
     s = strm->state;
 
+hisi_deflateParams(strm, level, strategy);
 #ifdef FASTEST
     if (level != 0) level = 1;
 #else
@@ -607,6 +612,7 @@ int ZEXPORT deflateParams(strm, level, strategy)
         s->high_water) {
         /* Flush the last buffer: */
         int err = deflate(strm, Z_BLOCK);
+fprintf(stderr, "#%s, %d, err:%d\n", __func__, __LINE__, err);
         if (err == Z_STREAM_ERROR)
             return err;
         if (strm->avail_out == 0)
@@ -1018,8 +1024,27 @@ int ZEXPORT deflate (strm, flush)
                 strm->is_head = 0;
         }
 	ret = hisi_deflate(strm, flush);
-        if (ret == Z_STREAM_END)
+        if (ret == Z_STREAM_END) {
+            if (s->wrap > 0) {
+                put_byte(s, (Byte)(strm->adler & 0xff));
+                put_byte(s, (Byte)((strm->adler >> 8) & 0xff));
+                put_byte(s, (Byte)((strm->adler >> 16) & 0xff));
+                put_byte(s, (Byte)((strm->adler >> 24) & 0xff));
+                flush_pending(strm);
+            }
+fprintf(stderr, "#%s, %d, strm->total_in:%d, strm->adler:0x%x, s->pending:0x%x, s->wrap:%d, strm->total_out:%d\n", __func__, __LINE__, strm->total_in, strm->adler, s->pending, s->wrap, strm->total_out);
+#ifdef GZIP
+            if (s->wrap == 2) {
+                put_byte(s, (Byte)(strm->total_in & 0xff));
+                put_byte(s, (Byte)((strm->total_in >> 8) & 0xff));
+                put_byte(s, (Byte)((strm->total_in >> 16) & 0xff));
+                put_byte(s, (Byte)((strm->total_in >> 24) & 0xff));
+                flush_pending(strm);
+            }
+#endif
+            if (s->wrap > 0) s->wrap = -s->wrap; /* write the trailer only once! */
             s->status= FINISH_STATE;
+        }
         return ret;
     }
 
@@ -1115,6 +1140,7 @@ int ZEXPORT deflateEnd (strm)
     	hisi_deflateEnd(strm);
     }
 
+fprintf(stderr, "#%s, %d, strm->total_in:%d, strm->total_out:%d\n", __func__, __LINE__, strm->total_in, strm->total_out);
     if (deflateStateCheck(strm)) return Z_STREAM_ERROR;
 
     status = strm->state->status;

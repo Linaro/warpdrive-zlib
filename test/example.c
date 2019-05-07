@@ -95,6 +95,16 @@ void test_compress(compr, comprLen, uncompr, uncomprLen)
     err = compress(compr, &comprLen, (const Bytef*)hello, len);
     CHECK_ERR(err, "compress");
 
+#if 1
+    {
+	int i;
+	fprintf(stderr, "compr:");
+	for (i = 0; i < 23; i++) {
+		fprintf(stderr, "%x ", *((unsigned char *)compr + i));
+	}
+	fprintf(stderr, "\n");
+    }
+#endif
     strcpy((char*)uncompr, "garbage");
 
     err = uncompress(uncompr, &uncomprLen, compr, comprLen);
@@ -255,6 +265,16 @@ void test_inflate(compr, comprLen, uncompr, uncomprLen)
     err = inflateInit(&d_stream);
     CHECK_ERR(err, "inflateInit");
 
+#if 1
+    {
+	int i;
+	fprintf(stderr, "compr:");
+	for (i = 0; i < 23; i++) {
+		fprintf(stderr, "%x ", *((unsigned char *)compr + i));
+	}
+	fprintf(stderr, "\n");
+    }
+#endif
     while (d_stream.total_out < uncomprLen && d_stream.total_in < comprLen) {
         d_stream.avail_in = d_stream.avail_out = 1; /* force small buffers */
         err = inflate(&d_stream, Z_NO_FLUSH);
@@ -265,6 +285,21 @@ void test_inflate(compr, comprLen, uncompr, uncomprLen)
     err = inflateEnd(&d_stream);
     CHECK_ERR(err, "inflateEnd");
 
+#if 1
+    {
+	int i;
+	fprintf(stderr, "uncompr:");
+	for (i = 0; i < 23; i++) {
+		fprintf(stderr, "%x ", *((unsigned char *)uncompr + i));
+	}
+	fprintf(stderr, "\n");
+	fprintf(stderr, "hello:");
+	for (i = 0; i < 23; i++) {
+		fprintf(stderr, "%x ", *((unsigned char *)hello + i));
+	}
+	fprintf(stderr, "\n");
+    }
+#endif
     if (strcmp((char*)uncompr, hello)) {
         fprintf(stderr, "bad inflate\n");
         exit(1);
@@ -326,6 +361,16 @@ void test_large_deflate(compr, comprLen, uncompr, uncomprLen)
     }
     err = deflateEnd(&c_stream);
     CHECK_ERR(err, "deflateEnd");
+#if 1
+    {
+	int i;
+	fprintf(stderr, "compr:");
+	for (i = 0; i < 1200; i++) {
+		fprintf(stderr, "%x ", *((unsigned char *)compr + i));
+	}
+	fprintf(stderr, "\n");
+    }
+#endif
 }
 
 /* ===========================================================================
@@ -347,6 +392,7 @@ void test_large_inflate(compr, comprLen, uncompr, uncomprLen)
     d_stream.next_in  = compr;
     d_stream.avail_in = (uInt)comprLen;
 
+fprintf(stderr, "#%s, %d\n", __func__, __LINE__);
     err = inflateInit(&d_stream);
     CHECK_ERR(err, "inflateInit");
 
@@ -354,6 +400,7 @@ void test_large_inflate(compr, comprLen, uncompr, uncomprLen)
         d_stream.next_out = uncompr;            /* discard the output */
         d_stream.avail_out = (uInt)uncomprLen;
         err = inflate(&d_stream, Z_NO_FLUSH);
+fprintf(stderr, "#%s, %d, err:%d, d_stream.total_in:%d\n", __func__, __LINE__, err, d_stream.total_in);
         if (err == Z_STREAM_END) break;
         CHECK_ERR(err, "large inflate");
     }
@@ -361,6 +408,7 @@ void test_large_inflate(compr, comprLen, uncompr, uncomprLen)
     err = inflateEnd(&d_stream);
     CHECK_ERR(err, "inflateEnd");
 
+fprintf(stderr, "#%s, %d, d_stream.total_out:%d, uncomprLen:%d, comprLen:%d, res:%d\n", __func__, __LINE__, d_stream.total_out, uncomprLen, comprLen, 2 * uncomprLen + comprLen / 2);
     if (d_stream.total_out != 2*uncomprLen + comprLen/2) {
         fprintf(stderr, "bad large inflate: %ld\n", d_stream.total_out);
         exit(1);
@@ -584,16 +632,20 @@ int main(argc, argv)
 
     test_deflate(compr, comprLen);
     test_inflate(compr, comprLen, uncompr, uncomprLen);
+fprintf(stderr, "#%s, %d\n", __func__, __LINE__);
 
     test_large_deflate(compr, comprLen, uncompr, uncomprLen);
     test_large_inflate(compr, comprLen, uncompr, uncomprLen);
+return 0;
 
+/*
     test_flush(compr, &comprLen);
     test_sync(compr, comprLen, uncompr, uncomprLen);
     comprLen = uncomprLen;
 
     test_dict_deflate(compr, comprLen);
     test_dict_inflate(compr, comprLen, uncompr, uncomprLen);
+*/
 
     free(compr);
     free(uncompr);
