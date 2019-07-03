@@ -1167,6 +1167,11 @@ int flush;
             state->mode = MATCH;
         case MATCH:
             if (left == 0) goto inf_leave;
+	    if (strm->is_wd) {
+		    state->length = 0;
+		    state->mode = LEN;
+		    break;
+	    }
             copy = out - left;
             if (state->offset > copy) {         /* copy from window */
                 copy = state->offset - copy;
