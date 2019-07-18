@@ -608,6 +608,7 @@ hisi_deflateParams(strm, level, strategy);
     }
     func = configuration_table[s->level].func;
 
+#if 0
     if ((strategy != s->strategy || func != configuration_table[level].func) &&
         s->high_water) {
         /* Flush the last buffer: */
@@ -633,6 +634,50 @@ fprintf(stderr, "#%s, %d, err:%d\n", __func__, __LINE__, err);
         s->max_chain_length = configuration_table[level].max_chain;
     }
     s->strategy = strategy;
+#else
+    if (strm->is_wd) {
+        if (s->level != level) {
+            if (s->level == 0 && s->matches != 0) {
+                if (s->matches == 1)
+                    slide_hash(s);
+                else
+                    CLEAR_HASH(s);
+                s->matches = 0;
+            }
+            s->level = level;
+            s->max_lazy_match   = configuration_table[level].max_lazy;
+            s->good_match       = configuration_table[level].good_length;
+            s->nice_match       = configuration_table[level].nice_length;
+            s->max_chain_length = configuration_table[level].max_chain;
+        }
+        s->strategy = strategy;
+	return Z_OK;
+    }
+    if ((strategy != s->strategy || func != configuration_table[level].func) &&
+        s->high_water) {
+        /* Flush the last buffer: */
+        int err = deflate(strm, Z_BLOCK);
+        if (err == Z_STREAM_ERROR)
+            return err;
+        if (strm->avail_out == 0)
+            return Z_BUF_ERROR;
+    }
+    if (s->level != level) {
+        if (s->level == 0 && s->matches != 0) {
+            if (s->matches == 1)
+                slide_hash(s);
+            else
+                CLEAR_HASH(s);
+            s->matches = 0;
+        }
+        s->level = level;
+        s->max_lazy_match   = configuration_table[level].max_lazy;
+        s->good_match       = configuration_table[level].good_length;
+        s->nice_match       = configuration_table[level].nice_length;
+        s->max_chain_length = configuration_table[level].max_chain;
+    }
+    s->strategy = strategy;
+#endif
     return Z_OK;
 }
 
@@ -1025,16 +1070,19 @@ int ZEXPORT deflate (strm, flush)
         }
 	ret = hisi_deflate(strm, flush);
         if (ret == Z_STREAM_END) {
-            if (s->wrap > 0) {
+            if (s->wrap == 1) {
+                put_byte(s, (Byte)((strm->adler >> 24) & 0xff));
+                put_byte(s, (Byte)((strm->adler >> 16) & 0xff));
+                put_byte(s, (Byte)((strm->adler >> 8) & 0xff));
+                put_byte(s, (Byte)(strm->adler & 0xff));
+                flush_pending(strm);
+            }
+#ifdef GZIP
+            if (s->wrap == 2) {
                 put_byte(s, (Byte)(strm->adler & 0xff));
                 put_byte(s, (Byte)((strm->adler >> 8) & 0xff));
                 put_byte(s, (Byte)((strm->adler >> 16) & 0xff));
                 put_byte(s, (Byte)((strm->adler >> 24) & 0xff));
-                flush_pending(strm);
-            }
-fprintf(stderr, "#%s, %d, strm->total_in:%d, strm->adler:0x%x, s->pending:0x%x, s->wrap:%d, strm->total_out:%d\n", __func__, __LINE__, strm->total_in, strm->adler, s->pending, s->wrap, strm->total_out);
-#ifdef GZIP
-            if (s->wrap == 2) {
                 put_byte(s, (Byte)(strm->total_in & 0xff));
                 put_byte(s, (Byte)((strm->total_in >> 8) & 0xff));
                 put_byte(s, (Byte)((strm->total_in >> 16) & 0xff));

@@ -381,8 +381,6 @@ static int hw_send_and_recv(z_stream *zstrm, int flush)
 		hw_ctl->inlen -= zstrm->headlen;
 
 	flush_type = (flush == Z_FINISH) ? HZ_FINISH : HZ_SYNC_FLUSH;
-	//flush_type = (flush == Z_FINISH) ? HZ_SYNC_FLUSH : HZ_FINISH;
-fprintf(stderr, "#%s, %d, stream_pos:%d, flush_type:%d\n", __func__, __LINE__, hw_ctl->stream_pos, flush_type);
 
 	memset(&msg, 0, sizeof(msg));
 	msg.dw9 = hw_ctl->alg_type;
@@ -472,15 +470,19 @@ fprintf(stderr, "#%s, %d, status:0x%x, crc:0x%x, end_of_last_blk:0x%x\n", __func
 */
 	zstrm->next_in += recv_msg->consumed;
 	if (hw_ctl->op_type == HW_DEFLATE) {
+		fprintf(stderr, "#%s, %d, crc:0x%x\n", __func__, __LINE__, zstrm->adler);
 		if (hw_ctl->alg_type == HW_ZLIB) {
 			hw_ctl->outlen -= 4;
 			hw_ctl->next_out -= 4;
-			zstrm->adler = *(unsigned int *)hw_ctl->next_out;
+			zstrm->adler = adler32(zstrm->adler, hw_ctl->in,
+					recv_msg->consumed);
 		} else if (hw_ctl->alg_type == HW_GZIP) {
 			hw_ctl->outlen -= 8;
 			hw_ctl->next_out -= 8;
-			zstrm->adler = *(unsigned int *)hw_ctl->next_out;
+			zstrm->adler = crc32(zstrm->adler, hw_ctl->in,
+					recv_msg->consumed);
 		}
+		fprintf(stderr, "#%s, %d, crc:0x%x\n", __func__, __LINE__, zstrm->adler);
 	}
 	if (zstrm->avail_in == 0) {
 		hw_ctl->next_in = hw_ctl->in;
