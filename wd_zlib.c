@@ -144,8 +144,6 @@ int hisi_flowctl(z_stream *zstrm, int flush)
 		hw_ctl->outlen = hw_ctl->outlen - len;
 		zstrm->avail_out = zstrm->avail_out - len;
 		zstrm->next_out += len;
-if (hw_ctl->op_type == HW_DEFLATE)
-fprintf(stderr, "#%s, %d, zstrm->next_out updated to 0x%x\n", __func__, __LINE__, zstrm->next_out);
 		/* zstream OUT buffer is full */
 		if (hw_ctl->pending_out)
 			return Z_OK;
@@ -439,7 +437,6 @@ recv_again:
 	/* synchronous mode, if get none, then get again */
 	} else if (ret == -EAGAIN)
 		goto recv_again;
-fprintf(stderr, "###msg dw7:0x%x, recv_msg dw7:0x%x\n", msg.dw7, recv_msg->dw7);
 	status = recv_msg->dw3 & 0xff;
 	type = recv_msg->dw9 & 0xff;
 #if 1
@@ -455,7 +452,6 @@ fprintf(stderr, "###msg dw7:0x%x, recv_msg dw7:0x%x\n", msg.dw7, recv_msg->dw7);
  		fprintf(stderr, "\n");
 	}
 #endif
-fprintf(stderr, "#%s, %d, status:0x%x, crc:0x%x, end_of_last_blk:0x%x\n", __func__, __LINE__, status, recv_msg->checksum, recv_msg->dw3 & 0x100);
 	SYS_ERR_COND(status != 0 && status != 0x0d && status != 0x13,
 		     "bad status (s=%d, t=%d)\n", status, type);
 	hw_ctl->stream_pos = STREAM_OLD;
@@ -502,8 +498,6 @@ fprintf(stderr, "#%s, %d, status:0x%x, crc:0x%x, end_of_last_blk:0x%x\n", __func
 	}
 	memcpy(zstrm->next_out, hw_ctl->next_out - hw_ctl->outlen, len);
 	zstrm->next_out += len;
-if (hw_ctl->op_type == HW_DEFLATE)
-fprintf(stderr, "#%s, %d, zstrm->next_out updated to 0x%x\n", __func__, __LINE__, zstrm->next_out);
 	zstrm->avail_out -= len;
 	zstrm->total_out += len;
 	hw_ctl->outlen -= len;
@@ -517,7 +511,6 @@ fprintf(stderr, "#%s, %d, zstrm->next_out updated to 0x%x\n", __func__, __LINE__
 	else if (ret == 0 &&  (recv_msg->dw3 & 0x1ff) == 0x113)
 		ret = Z_STREAM_END;    /* decomp_is_end  region */
 	if (ret == Z_STREAM_END) {
-fprintf(stderr, "#%s, %d Z_STREAM_END\n", __func__, __LINE__);
 		if (hw_ctl->pending_out) {
 			hw_ctl->stream_end = 1;
 			ret = Z_OK;
