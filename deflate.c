@@ -527,10 +527,8 @@ int ZEXPORT deflateReset (strm)
     int ret;
 
     ret = deflateResetKeep(strm);
-    if (!strm->is_wd) {
-        if (ret == Z_OK)
-            lm_init(strm->state);
-    }
+    if (ret == Z_OK)
+        lm_init(strm->state);
     return ret;
 }
 
@@ -1068,7 +1066,14 @@ int ZEXPORT deflate (strm, flush)
             } else
                 strm->is_head = 0;
         }
-	ret = hisi_deflate(strm, flush);
+	if (s->level == 0) {
+	    deflate_stored(s, flush);
+	    if (flush == Z_FINISH)
+	        ret = Z_STREAM_END;
+	    else
+	        ret = Z_OK;
+        } else
+	    ret = hisi_deflate(strm, flush);
         if (ret == Z_STREAM_END) {
             if (s->wrap == 1) {
                 put_byte(s, (Byte)((strm->adler >> 24) & 0xff));
@@ -1284,7 +1289,13 @@ local unsigned read_buf(strm, buf, size)
 
     strm->avail_in  -= len;
 
-    zmemcpy(buf, strm->next_in, len);
+    if (strm->is_wd && ((buf - strm->next_in) < len)) {
+	unsigned copy;
+	copy = (unsigned)(buf - strm->next_in);
+	zmemcpy(buf, strm->next_in + strm->headlen, copy - strm->headlen);
+    } else {
+        zmemcpy(buf, strm->next_in, len);
+    }
     if (strm->state->wrap == 1) {
         strm->adler = adler32(strm->adler, buf, len);
     }
@@ -1799,6 +1810,7 @@ local block_state deflate_stored(s, flush)
          */
         last = flush == Z_FINISH && len == left + s->strm->avail_in ? 1 : 0;
         _tr_stored_block(s, (char *)0, 0L, last);
+	fprintf(stderr, "#%s, %d, len:0x%x, ~len:0x%x\n", __func__, __LINE__, len, ~len);
 
         /* Replace the lengths in the dummy stored block with len. */
         s->pending_buf[s->pending - 4] = len;
