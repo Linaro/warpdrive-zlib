@@ -1068,9 +1068,9 @@ int ZEXPORT deflate (strm, flush)
         }
 	if (s->level == 0) {
 	    deflate_stored(s, flush);
-	    if (flush == Z_FINISH)
+	    if (flush == Z_FINISH) {
 	        ret = Z_STREAM_END;
-	    else
+	    } else
 	        ret = Z_OK;
         } else
 	    ret = hisi_deflate(strm, flush);
@@ -1289,10 +1289,37 @@ local unsigned read_buf(strm, buf, size)
 
     strm->avail_in  -= len;
 
+    zmemcpy(buf, strm->next_in, len);
+    if (strm->state->wrap == 1) {
+        strm->adler = adler32(strm->adler, buf, len);
+    }
+#ifdef GZIP
+    else if (strm->state->wrap == 2) {
+        strm->adler = crc32(strm->adler, buf, len);
+    }
+#endif
+    strm->next_in  += len;
+    strm->total_in += len;
+
+    return len;
+}
+
+local unsigned hisi_read_buf(strm, buf, size)
+    z_streamp strm;
+    Bytef *buf;
+    unsigned size;
+{
+    unsigned len = strm->avail_in;
+
+    if (len > size) len = size;
+    if (len == 0) return 0;
+
+    strm->avail_in  -= len;
+
     if (strm->is_wd && ((buf - strm->next_in) < len)) {
 	unsigned copy;
 	copy = (unsigned)(buf - strm->next_in);
-	zmemcpy(buf, strm->next_in + strm->headlen, copy - strm->headlen);
+	zmemcpy(buf, strm->next_in, copy - 5);
     } else {
         zmemcpy(buf, strm->next_in, len);
     }
@@ -1800,17 +1827,22 @@ local block_state deflate_stored(s, flush)
          * copying to the window and the pending buffer instead. Also don't
          * write an empty block when flushing -- deflate() does that.
          */
-        if (len < min_block && ((len == 0 && flush != Z_FINISH) ||
-                                flush == Z_NO_FLUSH ||
-                                len != left + s->strm->avail_in))
-            break;
+	if (s->strm->is_wd) {
+	    if (len < min_block && ((len == 0 && flush != Z_FINISH) ||
+				    len != left + s->strm->avail_in))
+		break;
+	} else {
+            if (len < min_block && ((len == 0 && flush != Z_FINISH) ||
+                                    flush == Z_NO_FLUSH ||
+                                    len != left + s->strm->avail_in))
+                break;
+	}
 
         /* Make a dummy stored block in pending to get the header bytes,
          * including any pending bits. This also updates the debugging counts.
          */
         last = flush == Z_FINISH && len == left + s->strm->avail_in ? 1 : 0;
         _tr_stored_block(s, (char *)0, 0L, last);
-	fprintf(stderr, "#%s, %d, len:0x%x, ~len:0x%x\n", __func__, __LINE__, len, ~len);
 
         /* Replace the lengths in the dummy stored block with len. */
         s->pending_buf[s->pending - 4] = len;
@@ -1843,7 +1875,10 @@ local block_state deflate_stored(s, flush)
          * the check value.
          */
         if (len) {
-            read_buf(s->strm, s->strm->next_out, len);
+	    if (s->strm->is_wd)
+	        hisi_read_buf(s->strm, s->strm->next_out, len);
+	    else
+                read_buf(s->strm, s->strm->next_out, len);
             s->strm->next_out += len;
             s->strm->avail_out -= len;
             s->strm->total_out += len;
