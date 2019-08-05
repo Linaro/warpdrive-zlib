@@ -14,6 +14,8 @@ void ZLIB_INTERNAL wd_deflate_reset(PREFIX3(streamp) strm, uInt size);
 #define DEFLATE_RESET_KEEP_HOOK(strm) \
     wd_deflate_reset((strm), sizeof(deflate_state))
 
+#define DEFLATE_END_HOOK wd_deflate_end
+
 #define DEFLATE_PARAMS_HOOK(strm, level, strategy)      \
     do {                                                \
     	int err;                                        \

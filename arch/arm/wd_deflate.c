@@ -295,21 +295,23 @@ void ZLIB_INTERNAL wd_deflate_reset(PREFIX3(streamp) strm, uInt size)
     struct wd_state *wd_state = GET_WD_STATE(state);
     struct hisi_param *param = &wd_state->param;
     struct hisi_qm_priv *priv;
+    struct wd_capa *capa = &wd_state->q.capa;
     int ret;
     size_t ss_region_size;
 
     if (state->wrap & 2) {
         param->alg_type = HW_GZIP;
-        wd_state->q.capa.alg = "gzip";
+	capa->alg = "gzip";
     } else {
         param->alg_type = HW_ZLIB;
-        wd_state->q.capa.alg = "zlib";
+	capa->alg = "zlib";
     }
-    wd_state->q.capa.latency = 0;   /*todo..*/
-    wd_state->q.capa.throughput = 0;
-    priv = (struct hisi_qm_priv *)(char *)&wd_state->q.capa.priv;
+    capa->latency = 0;   /*todo..*/
+    capa->throughput = 0;
+    priv = (struct hisi_qm_priv *)(char *)&capa->priv;
     priv->sqe_size = sizeof(struct hisi_zip_sqe);
-    priv->op_type = param->op_type = HW_DEFLATE;
+    param->op_type = HW_DEFLATE;
+    priv->op_type = HW_DEFLATE;
     ret = wd_request_queue(&wd_state->q);
     if (ret) {
         fprintf(stderr, "Fail to request wd queue without hwacc!\n");
@@ -345,5 +347,13 @@ void ZLIB_INTERNAL wd_deflate_reset(PREFIX3(streamp) strm, uInt size)
     return;
 
 out_queue:
+    wd_release_queue(&wd_state->q);
+}
+
+void ZLIB_INTERNAL wd_deflate_end(PREFIX3(streamp) strm)
+{
+    deflate_state *state = (deflate_state *)strm->state;
+    struct wd_state *wd_state = GET_WD_STATE(state);
+
     wd_release_queue(&wd_state->q);
 }
