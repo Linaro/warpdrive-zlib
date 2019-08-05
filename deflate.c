@@ -84,6 +84,8 @@ const char zng_deflate_copyright[] = " deflate 1.2.11.f Copyright 1995-2016 Jean
 #  define DEFLATE_GET_DICTIONARY_HOOK(strm, dict, dict_len) do {} while (0)
 /* Invoked at the end of deflateResetKeep(). Useful for initializing arch-specific extension blocks. */
 #  define DEFLATE_RESET_KEEP_HOOK(strm) do {} while (0)
+/* Invoked at the beginning of deflateEnd(). Useful for deinitializing arch-specific extension blocks. */
+#  define DEFLATE_END_HOOK(strm) do {} while (0)
 /* Invoked at the beginning of deflateParams(). Useful for updating arch-specific compression parameters. */
 #  define DEFLATE_PARAMS_HOOK(strm, level, strategy) do {} while (0)
 /* Adjusts the upper bound on compressed data length based on compression parameters and uncompressed data length.
@@ -1118,6 +1120,8 @@ int ZEXPORT PREFIX(deflateEnd)(PREFIX3(stream) *strm) {
 
     if (deflateStateCheck(strm))
         return Z_STREAM_ERROR;
+
+    DEFLATE_END_HOOK(strm);
 
     status = strm->state->status;
 
