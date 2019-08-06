@@ -26,9 +26,9 @@ void ZLIB_INTERNAL wd_deflate_reset(PREFIX3(streamp) strm, uInt size);
     } while (0)
 
 /* Memory management for the deflate state. Useful for allocating arch-specific extension blocks. */
-#  define ZALLOC_STATE(strm, items, size) ZALLOC(strm, items, size)
+#  define ZALLOC_STATE(strm, items, size) wd_alloc_state(strm, items, size)
 #  define ZFREE_STATE(strm, addr) ZFREE(strm, addr)
-#  define ZCOPY_STATE(dst, src, size) memcpy(dst, src, size)
+#  define ZCOPY_STATE(dst, src, size) wd_copy_state(dst, src, size)
 /* Memory management for the window. Useful for allocation the aligned window. */
 #  define ZALLOC_WINDOW(strm, items, size) ZALLOC(strm, items, size)
 #  define TRY_FREE_WINDOW(strm, addr) TRY_FREE(strm, addr)
