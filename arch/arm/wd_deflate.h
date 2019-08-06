@@ -1,6 +1,8 @@
 #ifndef WD_DEFLATE_H
 #define WD_DEFLATE_H
 
+#include "wd_common.h"
+
 int ZLIB_INTERNAL wd_can_deflate(PREFIX3(streamp) strm);
 int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm, int flush, block_state *result);
 int ZLIB_INTERNAL wd_deflate_params(PREFIX3(streamp) strm,
