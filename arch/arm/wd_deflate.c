@@ -118,10 +118,9 @@ recv_again:
         fprintf(stderr, "bad status (s=%d, t=%d)\n", status, type);
     param->stream_pos = STREAM_OLD;
     param->avail_out -= recv_msg->produced;
-    param->inlen -= recv_msg->consumed;
-    param->next_out += recv_msg->produced;
-    param->outlen += recv_msg->produced;
-    strm->next_in += recv_msg->consumed;
+    param->next_out  += recv_msg->produced;
+    param->outlen    += recv_msg->produced;
+    param->inlen    -= recv_msg->consumed;
 
     /* calculate CRC by software */
     if (param->alg_type == HW_ZLIB) {
@@ -144,13 +143,14 @@ recv_again:
         len = strm->avail_out;
         param->pending_out = 1;
         param->empty_out = 0;
+	strm->avail_out = 0;
     } else {
         len = param->outlen;
         param->pending_out = 0;
         param->empty_out = 1;
+	strm->avail_out -= len;
     }
     memcpy(strm->next_out, param->next_out - param->outlen, len);
-    param->next_out += len;
     param->avail_out -= len;
     strm->next_out += len;
     strm->total_out += len;
@@ -212,6 +212,7 @@ int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm, int flush, block_state *resu
     struct hisi_param *param = &wd_state->param;
     int len;
     int offset;
+    int ret;
 
     if (!param->hw_avail || !wd_can_deflate(strm))
         return 0;
@@ -274,8 +275,11 @@ int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm, int flush, block_state *resu
         return 1;
     }
     if (!param->empty_in && (flush == Z_FINISH) && param->avail_out) {
-        *result = finish_done;
-        hisi_send_and_recv(strm, wd_state, flush);
+        ret = hisi_send_and_recv(strm, wd_state, flush);
+	if (ret == Z_STREAM_END)
+            *result = finish_done;
+        else if (ret == Z_OK)
+            *result = need_more;
         return 1;
     } else if (param->full_in && param->avail_out) {
         *result = block_done;
