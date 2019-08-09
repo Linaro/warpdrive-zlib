@@ -8,35 +8,6 @@
 #include "zip_usr_if.h"
 #include "smm.h"
 
-#if 0
-struct hw_ctl {
-	struct wd_queue *q;
-	unsigned empty_in : 1;		/* IN buffer is empty */
-	unsigned empty_out : 1;		/* OUT buffer is empty */
-	unsigned full_in : 1;		/* IN buffer is ready */
-	unsigned pending_out : 1;	/* pending data for OUT buffer */
-	unsigned stream_pos : 1;	/* STREAM_NEW or STREAM_OLD */
-	unsigned stream_end : 1;
-	int alg_type;
-	int op_type;
-	int avail_in;			/* number of bytes availiable in IN buffer */
-	int avail_out;
-	int inlen;			/* data cached in IN buffer */
-	int outlen;			/* data cached in OUT buffer */
-	void *in;
-	void *out;
-	void *in_pa;
-	void *out_pa;
-	void *next_in;
-	void *next_out;
-	void *ctx_buf;
-	int ctx_dw0;
-	int ctx_dw1;
-	int ctx_dw2;
-	void *ss_buf;
-};
-#endif
-
 #define ASIZE                          (2 * 512 * 1024)    /* 512KB */
 #define HW_CTX_SIZE                    (512 * 1024)
 #define STREAM_CHUNK                   (512 * 1024)
@@ -57,8 +28,8 @@ struct hisi_param {
 
     int avail_in;
     int avail_out;
-    int inlen;
-    int outlen;
+    int stalled_size;                  /* size of data stored in IN buffer */
+    int pending_size;                  /* size of data pending in OUT buffer */
     void *next_in;
     void *next_out;
 
@@ -66,7 +37,8 @@ struct hisi_param {
     unsigned empty_in : 1;             /* IN buffer is empty */
     unsigned empty_out : 1;            /* OUT buffer is empty */
     unsigned full_in : 1;              /* IN buffer is ready */
-    unsigned pending_out : 1;          /* pending data for OUT buffer */
+    unsigned stalled : 1;              /* data stalled in IN buffer */
+    unsigned pending : 1;              /* pending data for OUT buffer */
     unsigned stream_pos : 1;           /* STREAM_NEW or STREAM_OLD */
     unsigned stream_end : 1;
 };
