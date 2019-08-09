@@ -29,6 +29,7 @@ static inline void load_from_stream(PREFIX3(streamp) strm,
     param->avail_in -= length;
     strm->next_in   += length;
     strm->total_in  += length;
+    strm->avail_in  -= length;
 }
 
 static int hisi_send_and_recv(PREFIX3(streamp) strm,
@@ -264,7 +265,6 @@ int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm,
     struct wd_state *wd_state = GET_WD_STATE(state);
     struct hisi_param *param = &wd_state->param;
     int len;
-    int offset;
     int ret;
 
     if (state == Z_NO_COMPRESSION) {
@@ -280,14 +280,11 @@ int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm,
     } else if (param->stream_end) {
         reset_wd_param(wd_state);
     }
-    offset = param->next_in - param->in;
-    if (!param->full_in && (strm->avail_in || offset)) {
-        if ((strm->avail_in + offset) > STREAM_CHUNK) {
-            if (param->avail_in > STREAM_CHUNK) {
-                fprintf(stderr, "Too much data in IN buffer.\n");
-		return 1;
-            }
-            len = STREAM_CHUNK - offset;
+    param->stalled_size = param->next_in - param->in;
+    if (!param->full_in && (strm->avail_in || param->stalled_size)) {
+#if 0
+        if ((strm->avail_in + stalled_size) > STREAM_CHUNK) {
+            len = STREAM_CHUNK - stalled_size;
             if (strm->avail_in && strm->avail_in < len) {
                 load_from_stream(strm, param, strm->avail_in);
                 strm->avail_in = 0;
@@ -306,6 +303,14 @@ int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm,
             param->empty_in = 0;
 	    param->full_in = 1;
         }
+#else
+        if (strm->avail_in)
+            load_from_stream(strm, param, strm->avail_in);
+        if (param->stalled_size) {
+            param->empty_in = 0;
+            param->full_in = 0;
+        }
+#endif
     }
     if (!param->full_in && (flush != Z_FINISH)) {
         *result = need_more;
