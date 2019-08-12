@@ -5,20 +5,6 @@
 #include "wd_deflate.h"
 #include "wd_detail.h"
 
-static void reset_wd_param(struct wd_state *wd_state)
-{
-    struct hisi_param *param = &wd_state->param;
-
-    param->stream_end = 0;
-    param->stream_pos = STREAM_NEW;
-    param->empty_in = param->empty_out = 1;
-    param->full_in = param->pending = 0;
-    param->avail_in = param->avail_out = STREAM_CHUNK;
-    param->stalled_size = param->pending_size = 0;
-    param->next_in = param->in;
-    param->next_out = param->out;
-}
-
 static inline void load_from_stream(PREFIX3(streamp) strm,
                                     struct hisi_param *param,
                                     int length)
@@ -252,7 +238,7 @@ void ZLIB_INTERNAL wd_deflate_flush_pending(PREFIX3(streamp) strm,
         *result = need_more;
     } else if (param->stream_end) {
         /* All of dta is flush. */
-        reset_wd_param(wd_state);
+        wd_reset_param(wd_state);
         *result = finish_done;
     }
 }
@@ -278,7 +264,7 @@ int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm,
         wd_deflate_flush_pending(strm, result);
         return 1;
     } else if (param->stream_end) {
-        reset_wd_param(wd_state);
+        wd_reset_param(wd_state);
     }
     param->stalled_size = param->next_in - param->in;
     if (!param->full_in && (strm->avail_in || param->stalled_size)) {
@@ -383,7 +369,7 @@ void ZLIB_INTERNAL wd_deflate_reset(PREFIX3(streamp) strm, uInt size)
     param->in = smm_alloc(param->ss_buf, ASIZE);
     param->out = smm_alloc(param->ss_buf, ASIZE);
     param->ctx_buf = smm_alloc(param->ss_buf, HW_CTX_SIZE);
-    reset_wd_param(wd_state);
+    wd_reset_param(wd_state);
 
     if (wd_state->q.dev_flags & UACCE_DEV_NOIOMMU) {
         param->in_pa   = wd_get_pa_from_va(&wd_state->q, param->in);

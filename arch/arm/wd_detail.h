@@ -34,6 +34,7 @@ struct hisi_param {
     void *next_out;
 
     unsigned hw_avail : 1;             /* HW accelerator is available */
+    unsigned hw_enabled : 1;           /* HW accelerator is enabled */
     unsigned empty_in : 1;             /* IN buffer is empty */
     unsigned empty_out : 1;            /* OUT buffer is empty */
     unsigned full_in : 1;              /* IN buffer is ready */
