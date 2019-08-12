@@ -91,6 +91,8 @@
 /* Architecture-specific hooks. */
 #ifdef S390_DFLTCC_INFLATE
 #  include "arch/s390/dfltcc_inflate.h"
+#elif defined(WD_INFLATE)
+#  include "arch/arm/wd_inflate.h"
 #else
 /* Memory management for the inflate state. Useful for allocating arch-specific extension blocks. */
 #  define ZALLOC_STATE(strm, items, size) ZALLOC(strm, items, size)
