@@ -33,9 +33,7 @@ void ZLIB_INTERNAL wd_inflate_reset(PREFIX3(streamp) strm, uInt size);
         RESTORE(); \
         action = wd_inflate((strm), (flush), &ret); \
         LOAD(); \
-        if (action == WD_INFLATE_CONTINUE) \
-            return ret; \
-        else if (action == WD_INFLATE_END) \
+        if (action == WD_INFLATE_END) \
             return ret; \
 	else if (action == WD_INFLATE_BREAK) \
             goto inf_leave; \

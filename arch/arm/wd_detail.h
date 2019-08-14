@@ -34,7 +34,7 @@ struct hisi_param {
     int pending_size;                  /* size of data pending in OUT buffer */
     void *next_in;
     void *next_out;
-    int expected_total_in;
+    int saved_avail_in;
 
     unsigned hw_avail : 1;             /* HW accelerator is available */
     unsigned hw_enabled : 1;           /* HW accelerator is enabled */

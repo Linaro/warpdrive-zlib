@@ -14,7 +14,6 @@ void ZLIB_INTERNAL wd_reset_param(struct wd_state *wd_state)
     param->stalled_size = param->pending_size = 0;
     param->next_in = param->in;
     param->next_out = param->out;
-    param->expected_total_in = 4;
 }
 
 void ZLIB_INTERNAL *wd_alloc_state(PREFIX3(streamp) strm, uInt items, uInt size)

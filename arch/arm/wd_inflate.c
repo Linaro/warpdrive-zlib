@@ -14,9 +14,19 @@ static inline void load_from_stream(PREFIX3(streamp) strm,
     param->next_in  += length;
     param->stalled_size    += length;
     param->avail_in -= length;
+    param->saved_avail_in = length;
     strm->next_in   += length;
     strm->total_in  += length;
     strm->avail_in  -= length;
+}
+
+static inline void restore_to_stream(PREFIX3(streamp) strm,
+                                     struct hisi_param *param)
+{
+    strm->next_in   -= param->saved_avail_in;
+    strm->total_in  -= param->saved_avail_in;
+    strm->avail_in  += param->saved_avail_in;
+    param->saved_avail_in = 0;
 }
 
 static int hisi_inflate(PREFIX3(streamp) strm,
@@ -50,14 +60,25 @@ static int hisi_inflate(PREFIX3(streamp) strm,
 
  #if 0
     {
-        int i, len;
-        fprintf(stderr, "IN[%d]:", hw_ctl->stalled_size);
-        len = hw_ctl->stalled_size;
-        if (len > 512)
-        len = 512;
+        int i, len, offset;
+        fprintf(stderr, "+IN[%d]:", param->stalled_size);
+        len = param->stalled_size;
+        if (len > 256)
+            len = 256;
         for (i = 0; i < len; i++) {
-            fprintf(stderr, "%x ", *((unsigned char *)hw_ctl->next_in - hw_ctl->stalled_size + i));
+            fprintf(stderr, "%x ", *((unsigned char *)param->next_in - param->stalled_size + i));
         }
+        fprintf(stderr, "\n");
+        fprintf(stderr, "-IN[%d]:", param->stalled_size);
+        len = param->stalled_size;
+        if (len > 256)
+            len = 256;
+	offset = param->stalled_size + 2 - 256;
+	if (i < param->next_in - param->in) {
+            for (i = offset; i < offset + len; i++) {
+                fprintf(stderr, "%x ", *((unsigned char *)param->next_in - param->stalled_size + i));
+            }
+	}
         fprintf(stderr, "\n");
     }
 #endif
@@ -81,7 +102,7 @@ recv_again:
         goto recv_again;
     status = recv_msg->dw3 & 0xff;
     type = recv_msg->dw9 & 0xff;
-#if 1
+#if 0
     {
         int i, len;
         fprintf(stderr, "OUT[%d]:", recv_msg->produced + param->pending_size);
@@ -94,18 +115,21 @@ recv_again:
         fprintf(stderr, "\n");
     }
 #endif
-    if (status != 0 && status != 0x0d && status != 0x13)
-        fprintf(stderr, "bad status (s=%d, t=%d)\n", status, type);
-    if (status == 0x10) {
-        *action = WD_INFLATE_CONTINUE;
+    if (status != 0 && status != 0x0d && status != 0x13) {
+        fprintf(stderr, "Bad status (s=%d, t=%d). Inflate by software now.\n",
+                status, type);
+        *action = WD_INFLATE_SOFTWARE;
+	restore_to_stream(strm, param);
+        wd_inflate_disable(strm);
         ret = -EINVAL;
         goto out;
     }
 
-    *action = WD_INFLATE_END;
-    param->stream_pos = STREAM_OLD;
-    param->avail_out -= recv_msg->produced;
-    param->next_out  += recv_msg->produced;
+    *action                 = WD_INFLATE_END;
+    param->stream_pos       = STREAM_OLD;
+    param->saved_avail_in   = 0;
+    param->avail_out       -= recv_msg->produced;
+    param->next_out        += recv_msg->produced;
     param->pending_size    += recv_msg->produced;
     param->stalled_size    -= recv_msg->consumed;
 
@@ -266,23 +290,16 @@ wd_inflate_action ZLIB_INTERNAL wd_inflate(PREFIX3(streamp) strm,
         }
     }
     if (!param->full_in && !strm->avail_in) {
-        if (strm->total_in > param->expected_total_in) {
-            /* Fail to get more data, trigger to inflate */
-            *ret = hisi_inflate(strm, wd_state, flush, &action);
-            if ((*ret < 0) && (action == WD_INFLATE_CONTINUE)) {
-                *ret = Z_OK;
-		param->expected_total_in++;
-            } else if (*ret == Z_OK) {
-		if (!param->pending)
-                    *ret = Z_STREAM_END;
-		action = WD_INFLATE_END;
-            }
-            return action;
-        } else {
-            *ret = Z_OK;
-	    action = WD_INFLATE_END;
-	    return action;
-	}
+       /* Fail to get more data, trigger to inflate */
+       *ret = hisi_inflate(strm, wd_state, flush, &action);
+       if ((*ret < 0) && (action == WD_INFLATE_SOFTWARE)) {
+           *ret = Z_OK;
+       } else if (*ret == Z_OK) {
+          if (!param->pending)
+              *ret = Z_STREAM_END;
+          action = WD_INFLATE_END;
+       }
+       return action;
     }
     if (!param->empty_in && (flush == Z_FINISH) && param->avail_out) {
         *ret = hisi_inflate(strm, wd_state, flush, &action);
