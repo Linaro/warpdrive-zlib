@@ -18,7 +18,7 @@ static inline void load_from_stream(PREFIX3(streamp) strm,
     strm->avail_in  -= length;
 }
 
-static int hisi_send_and_recv(PREFIX3(streamp) strm,
+static int hisi_deflate(PREFIX3(streamp) strm,
 			      struct wd_state *wd_state,
                               int flush)
 {
@@ -27,11 +27,6 @@ static int hisi_send_and_recv(PREFIX3(streamp) strm,
     int ret = 0, len, flush_type;
     __u32 status, type;
     __u64 pa;
-
-#if 0
-    if (param->stream_pos && (param->op_type == HW_INFLATE))
-        param->stalled_size -= strm->headlen;
-#endif
 
     flush_type = (flush == Z_FINISH) ? HZ_FINISH : HZ_SYNC_FLUSH;
 
@@ -263,8 +258,6 @@ int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm,
     if (wd_deflate_need_flush(strm)) {
         wd_deflate_flush_pending(strm, result);
         return 1;
-    } else if (param->stream_end) {
-        wd_reset_param(wd_state);
     }
     param->stalled_size = param->next_in - param->in;
     if (!param->full_in && (strm->avail_in || param->stalled_size)) {
@@ -303,14 +296,14 @@ int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm,
         return 1;
     }
     if (!param->empty_in && (flush == Z_FINISH) && param->avail_out) {
-        ret = hisi_send_and_recv(strm, wd_state, flush);
+        ret = hisi_deflate(strm, wd_state, flush);
 	if (ret == Z_STREAM_END)
             *result = finish_done;
         else if (ret == Z_OK)
             *result = need_more;
         return 1;
     } else if (param->full_in && param->avail_out) {
-        ret = hisi_send_and_recv(strm, wd_state, flush);
+        ret = hisi_deflate(strm, wd_state, flush);
         if (ret == Z_STREAM_END)
             *result = finish_done;
         else if (ret == Z_OK)
