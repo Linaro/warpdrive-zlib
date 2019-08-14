@@ -19,9 +19,10 @@ static inline void load_from_stream(PREFIX3(streamp) strm,
     strm->avail_in  -= length;
 }
 
-static int hisi_send_and_recv(PREFIX3(streamp) strm,
+static int hisi_inflate(PREFIX3(streamp) strm,
 			      struct wd_state *wd_state,
-                              int flush)
+                              int flush,
+                              wd_inflate_action *action)
 {
     struct hisi_zip_sqe msg, *recv_msg;
     struct hisi_param *param = &wd_state->param;
@@ -29,17 +30,11 @@ static int hisi_send_and_recv(PREFIX3(streamp) strm,
     __u32 status, type;
     __u64 pa;
 
-#if 0
-    if (param->stream_pos && (param->op_type == HW_INFLATE))
-        param->stalled_size -= strm->headlen;
-#endif
-
-    flush_type = (flush == Z_FINISH) ? HZ_FINISH : HZ_SYNC_FLUSH;
-
     memset(&msg, 0, sizeof(msg));
-    msg.dw9 = param->alg_type;
+    msg.dw9 = param->alg_type;  // PBUFFER
     msg.dw7 = (param->stream_pos) ? HZ_STREAM_NEW : HZ_STREAM_OLD;
-    msg.dw7 |= flush_type | HZ_STATEFUL;
+    msg.dw7 |= HZ_STATEFUL;
+    msg.dw3 = END_OF_LAST_BLK | SQE_STATUS_MASK;
     pa = (__u64)param->next_in - (__u64)param->in - param->stalled_size +
          (__u64)param->in_pa;
     msg.source_addr_l = pa & 0xffffffff;
@@ -52,11 +47,7 @@ static int hisi_send_and_recv(PREFIX3(streamp) strm,
     msg.dest_avail_out = param->avail_out;
     msg.stream_ctx_addr_l = (__u64)param->ctx_buf & 0xffffffff;
     msg.stream_ctx_addr_h = (__u64)param->ctx_buf >> 32;
-    if (!param->stream_pos) {
-        msg.checksum = strm->adler;
-        if (param->alg_type == HW_GZIP)
-            msg.isize = strm->total_in;
-    }
+
  #if 0
     {
         int i, len;
@@ -83,6 +74,7 @@ recv_again:
     ret = wd_recv(&wd_state->q, (void **)&recv_msg);
     if (ret == -EIO) {
         fputs(" wd_recv fail!\n", stderr);
+        *action = WD_INFLATE_BREAK;
         goto out;
     /* synchronous mode, if get none, then get again */
     } else if (ret == -EAGAIN)
@@ -104,6 +96,13 @@ recv_again:
 #endif
     if (status != 0 && status != 0x0d && status != 0x13)
         fprintf(stderr, "bad status (s=%d, t=%d)\n", status, type);
+    if (status == 0x10) {
+        *action = WD_INFLATE_CONTINUE;
+        ret = -EINVAL;
+        goto out;
+    }
+
+    *action = WD_INFLATE_END;
     param->stream_pos = STREAM_OLD;
     param->avail_out -= recv_msg->produced;
     param->next_out  += recv_msg->produced;
@@ -140,8 +139,9 @@ recv_again:
 
     if (ret == 0 && flush == Z_FINISH)
         ret = Z_STREAM_END;
-    else if (ret == 0 &&  (recv_msg->dw3 & 0x1ff) == 0x113)
-        ret = Z_STREAM_END;    /* decomp_is_end  region */
+    else if (!ret && (recv_msg->dw3 & END_OF_LAST_BLK)) {
+        ret = Z_STREAM_END;
+    }
     if (ret == Z_STREAM_END) {
         if (param->pending) {
             param->stream_end = 1;
@@ -222,14 +222,13 @@ wd_inflate_action ZLIB_INTERNAL wd_inflate_flush_pending(PREFIX3(streamp) strm,
     param->pending_size = param->pending_size - flush_size;
     strm->avail_out -= flush_size;
     strm->next_out += flush_size;
-    if (param->pending) {
-        /* Only part data is flushed. */
-        return WD_INFLATE_CONTINUE;
-    } else if (param->stream_end) {
+    strm->total_out += flush_size;
+    if (!param->pending && param->stream_end) {
         /* All of dta is flush. */
         wd_reset_param(wd_state);
-        return WD_INFLATE_BREAK;
+	*ret = Z_STREAM_END;
     }
+    return WD_INFLATE_END;
 }
 
 wd_inflate_action ZLIB_INTERNAL wd_inflate(PREFIX3(streamp) strm,
@@ -239,7 +238,9 @@ wd_inflate_action ZLIB_INTERNAL wd_inflate(PREFIX3(streamp) strm,
     struct inflate_state *state = (struct inflate_state *)strm->state;
     struct wd_state *wd_state = GET_WD_STATE(state);
     struct hisi_param *param = &wd_state->param;
+    wd_inflate_action action;
     int len;
+    int avail_in;
 
     if (flush == Z_BLOCK || flush == Z_TREES) {
         /* HW accelerator does not support stopping on block boundaries */
@@ -252,69 +253,49 @@ wd_inflate_action ZLIB_INTERNAL wd_inflate(PREFIX3(streamp) strm,
 	}
     }
 
-    if (wd_inflate_need_flush(strm)) {
+    if (wd_inflate_need_flush(strm))
         return wd_inflate_flush_pending(strm, ret);
-    } else if (param->stream_end) {
-        wd_reset_param(wd_state);
-    }
-    if (!param->full_in && !strm->avail_in) {
-        /* Fail to get more data, trigger to inflate */
-        *ret = hisi_send_and_recv(strm, wd_state, flush);
-	if (*ret == Z_OK)
-            *ret = Z_STREAM_END;
-        return WD_INFLATE_BREAK;
-    }
+
     param->stalled_size = param->next_in - param->in;
     if (!param->full_in && (strm->avail_in || param->stalled_size)) {
-#if 0
-        if ((strm->avail_in + stalled_size) > STREAM_CHUNK) {
-            len = STREAM_CHUNK - stalled_size;
-            if (strm->avail_in && strm->avail_in < len) {
-                load_from_stream(strm, param, strm->avail_in);
-                strm->avail_in = 0;
-            } else if (strm->avail_in > len) {
-                load_from_stream(strm, param, len);
-                strm->avail_in -= len;
-            }
-        } else {
-            load_from_stream(strm, param, strm->avail_in);
-            strm->avail_in = 0;
-        }
-	if (param->stalled_size < MIN_STREAM_CHUNK) {
-            param->empty_in = 0;
-	    param->full_in = 0;
-        } else {
-            param->empty_in = 0;
-	    param->full_in = 1;
-        }
-#else
         if (strm->avail_in)
             load_from_stream(strm, param, strm->avail_in);
         if (param->stalled_size) {
             param->empty_in = 0;
             param->full_in = 0;
         }
-#endif
     }
-    if (!param->full_in && (flush != Z_FINISH)) {
-        return WD_INFLATE_CONTINUE;
+    if (!param->full_in && !strm->avail_in) {
+        if (strm->total_in > param->expected_total_in) {
+            /* Fail to get more data, trigger to inflate */
+            *ret = hisi_inflate(strm, wd_state, flush, &action);
+            if ((*ret < 0) && (action == WD_INFLATE_CONTINUE)) {
+                *ret = Z_OK;
+		param->expected_total_in++;
+            } else if (*ret == Z_OK) {
+		if (!param->pending)
+                    *ret = Z_STREAM_END;
+		action = WD_INFLATE_END;
+            }
+            return action;
+        } else {
+            *ret = Z_OK;
+	    action = WD_INFLATE_END;
+	    return action;
+	}
     }
     if (!param->empty_in && (flush == Z_FINISH) && param->avail_out) {
-        *ret = hisi_send_and_recv(strm, wd_state, flush);
-        if (*ret == Z_OK)
-            return WD_INFLATE_CONTINUE;
-        return WD_INFLATE_BREAK;
+        *ret = hisi_inflate(strm, wd_state, flush, &action);
+	return action;
     } else if (param->full_in && param->avail_out) {
-        *ret = hisi_send_and_recv(strm, wd_state, flush);
-        if (*ret == Z_OK)
-            return WD_INFLATE_CONTINUE;
-        return WD_INFLATE_BREAK;
+        *ret = hisi_inflate(strm, wd_state, flush, &action);
+	return action;
     } else if (param->empty_in && param->empty_out && (flush == Z_FINISH)) {
         *ret = Z_STREAM_END;
-        return WD_INFLATE_BREAK;
+        return WD_INFLATE_END;
     }
-    *ret = Z_STREAM_ERROR;
-    return WD_INFLATE_BREAK;
+    *ret = Z_DATA_ERROR;
+    return WD_INFLATE_END;
 }
 
 void ZLIB_INTERNAL wd_inflate_reset(PREFIX3(streamp) strm, uInt size)

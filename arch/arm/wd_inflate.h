@@ -7,12 +7,16 @@
 typedef enum {
     WD_INFLATE_CONTINUE,
     WD_INFLATE_BREAK,
+    WD_INFLATE_CRC_ERROR,
+    WD_INFLATE_END,
     WD_INFLATE_SOFTWARE,
 } wd_inflate_action;
 
 int ZLIB_INTERNAL wd_can_inflate(PREFIX3(streamp) strm);
 int ZLIB_INTERNAL wd_inflate_disable(PREFIX3(streamp) strm);
-wd_inflate_action ZLIB_INTERNAL wd_inflate(PREFIX3(streamp) strm, int flush, int *ret);
+wd_inflate_action ZLIB_INTERNAL wd_inflate(PREFIX3(streamp) strm,
+                                           int flush,
+                                           int *ret);
 void ZLIB_INTERNAL wd_inflate_reset(PREFIX3(streamp) strm, uInt size);
 
 #define INFLATE_RESET_KEEP_HOOK(strm) \
@@ -24,13 +28,16 @@ void ZLIB_INTERNAL wd_inflate_reset(PREFIX3(streamp) strm, uInt size);
 #define INFLATE_TYPEDO_HOOK(strm, flush) \
     if (wd_can_inflate((strm))) { \
         wd_inflate_action action; \
+        struct inflate_state *state = (struct inflate_state *)strm->state; \
 \
         RESTORE(); \
         action = wd_inflate((strm), (flush), &ret); \
         LOAD(); \
         if (action == WD_INFLATE_CONTINUE) \
-            break; \
-        else if (action == WD_INFLATE_BREAK) \
+            return ret; \
+        else if (action == WD_INFLATE_END) \
+            return ret; \
+	else if (action == WD_INFLATE_BREAK) \
             goto inf_leave; \
     }
 

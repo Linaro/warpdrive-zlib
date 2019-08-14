@@ -12,6 +12,8 @@
 #define HW_CTX_SIZE                    (512 * 1024)
 #define STREAM_CHUNK                   (512 * 1024)
 #define MIN_STREAM_CHUNK               512
+#define END_OF_LAST_BLK                0x100
+#define SQE_STATUS_MASK                0xff
 
 struct hisi_param {
     int alg_type;
@@ -32,6 +34,7 @@ struct hisi_param {
     int pending_size;                  /* size of data pending in OUT buffer */
     void *next_in;
     void *next_out;
+    int expected_total_in;
 
     unsigned hw_avail : 1;             /* HW accelerator is available */
     unsigned hw_enabled : 1;           /* HW accelerator is enabled */
