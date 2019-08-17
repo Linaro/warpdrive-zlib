@@ -161,37 +161,48 @@ out:
 static inline int wd_are_params_ok(int level,
 				   int strategy)
 {
-#if 0
-    return level && (strategy == Z_FIXED || strategy == Z_DEFAULT_STRATEGY);
-#else
+    if ((level <= 3) || (strategy != Z_DEFAULT_STRATEGY))
+	return 0;
     return 1;
-#endif
 }
 
-
-int ZLIB_INTERNAL wd_deflate_params(PREFIX3(streamp) strm,
-                                    int level,
-                                    int strategy)
-{
-    int can_deflate = wd_are_params_ok(level, strategy);
-
-    if (can_deflate)
-	return Z_OK;
-
-    if (level == Z_NO_COMPRESSION)
-        return Z_OK;
-
-    return Z_STREAM_ERROR;
-}
 
 int ZLIB_INTERNAL wd_can_deflate(PREFIX3(streamp) strm)
 {
     deflate_state *state = (deflate_state *)strm->state;
+    struct wd_state *wd_state = GET_WD_STATE(state);
 
-    /* Unsupported compression settings */
-    if (!wd_are_params_ok(state->level, state->strategy))
+    struct hisi_param *param = &wd_state->param;
+
+    if (param->hw_avail && param->hw_enabled) {
+        if (wd_are_params_ok(state->level, state->strategy))
+            return 1;
+    }
+    return 0;
+}
+
+int ZLIB_INTERNAL wd_deflate_enable(PREFIX3(streamp) strm)
+{
+    deflate_state *state = (deflate_state *)strm->state;
+    struct wd_state *wd_state = GET_WD_STATE(state);
+    struct hisi_param *param = &wd_state->param;
+
+    if (param->hw_avail) {
+        param->hw_enabled = 1;
         return 0;
-    return 1;
+    }
+    return -EINVAL;
+}
+
+int ZLIB_INTERNAL wd_deflate_disable(PREFIX3(streamp) strm)
+{
+    deflate_state *state = (deflate_state *)strm->state;
+    struct wd_state *wd_state = GET_WD_STATE(state);
+    struct hisi_param *param = &wd_state->param;
+
+    param->hw_enabled = 0;
+    fprintf(stderr, "Deflate by software now.\n");
+    return 0;
 }
 
 int ZLIB_INTERNAL wd_deflate_need_flush(PREFIX3(streamp) strm)
@@ -236,6 +247,26 @@ void ZLIB_INTERNAL wd_deflate_flush_pending(PREFIX3(streamp) strm,
         wd_reset_param(wd_state);
         *result = finish_done;
     }
+}
+
+int ZLIB_INTERNAL wd_deflate_params(PREFIX3(streamp) strm,
+                                    int level,
+                                    int strategy)
+{
+    deflate_state *state = (deflate_state *)strm->state;
+    struct wd_state *wd_state = GET_WD_STATE(state);
+    struct hisi_param *param = &wd_state->param;
+    block_state result;
+
+    if (wd_can_deflate(strm) && (level <= 3)) {
+        if (wd_deflate_need_flush(strm))
+            wd_deflate_flush_pending(strm, &result);
+        wd_deflate_disable(strm);
+    }
+    if (wd_can_deflate(strm) && !wd_are_params_ok(level, strategy)) {
+        wd_deflate_disable(strm);
+    }
+    return Z_OK;
 }
 
 int ZLIB_INTERNAL wd_deflate(PREFIX3(streamp) strm,
@@ -327,6 +358,12 @@ void ZLIB_INTERNAL wd_deflate_reset(PREFIX3(streamp) strm, uInt size)
     int ret;
     size_t ss_region_size;
 
+    if (state->level <= 3) {
+        fprintf(stderr, "Can't support fast level. Use software instead.\n");
+	wd_deflate_disable(strm);
+	param->hw_avail = 0;
+	return;
+    }
     if (state->wrap & 2) {
         param->alg_type = HW_GZIP;
 	capa->alg = "gzip";
@@ -347,6 +384,7 @@ void ZLIB_INTERNAL wd_deflate_reset(PREFIX3(streamp) strm, uInt size)
 	return;
     }
     param->hw_avail = 1;
+    wd_deflate_enable(strm);
 
     ss_region_size = 4096 + ASIZE * 2 + HW_CTX_SIZE;
     param->ss_buf = wd_reserve_memory(&wd_state->q, ss_region_size);
@@ -382,6 +420,8 @@ void ZLIB_INTERNAL wd_deflate_end(PREFIX3(streamp) strm)
 {
     deflate_state *state = (deflate_state *)strm->state;
     struct wd_state *wd_state = GET_WD_STATE(state);
+    struct hisi_param *param = &wd_state->param;
 
-    wd_release_queue(&wd_state->q);
+    if (param->hw_avail)
+        wd_release_queue(&wd_state->q);
 }
