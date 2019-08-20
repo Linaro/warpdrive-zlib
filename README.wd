@@ -1,0 +1,91 @@
+ZLIB over warpdrive
+
+Build
+-----
+
+ * Dependancy. Need install warpdrive libary first.
+ $sudo cp ${WARPDRIVE}/.libs/libwd.so.0.0.0 /usr/libs/aarch64-linux-gnu/
+ $cd /usr/lib/aarch64-linux-gnu/
+ $sudo ln -sf libwd.so.0.0.0 libwd.so.0
+ $sudo ln -sf libwd.so.0.0.0 libwd.so
+
+ * Create the build directory under zlib-ng.
+ $cd zlib-ng
+ $mkdir -p build
+
+ * Always need to clean cache file.
+ $rm CMakeCache.txt
+
+ * Compile & install. Build it as libz. User needs to backup his own libz first.
+ $cmake .. -DZLIB_COMPAT=ON -DWITH_OPTIM=ON -DWITH_NEON=ON -DWITH_WD_DEFLATE=ON -DWITH_WD_INFLATE=ON -DCMAKE_BUILD_TYPE=Debug
+ $make
+ $sudo cp libz.so.1.2.11 /usr/lib/aarch64-linux-gnu/
+ $sudo ln -sf libz.so.1.2.11 libz.so.1
+ $sudo ln -sf libz.so.1.2.11 libz.so
+
+
+Test cases
+----------
+
+ * Run example program.
+ $cd zlib-ng
+ $sudo ./example
+
+ * Run minigzip program to compress file.
+ $sudo ./minigzip -[0-9] [file]
+
+ * Run minigzip program to decompress file.
+ $sudo ./minigzip -d [file]
+
+
+Workaround and Failure
+----------------------
+
+ * test_large_deflate() adopts the workaround to use software decompression.
+   Since Z_BEST_SPEED is specified, and dynamic block and stored block should
+   be generated. But the hardware accelerator could only generate fix block.
+   Even I tried to implement stored block by copying the block, the inflate
+   function could only handle the first block (fix block), and discard the
+   second block (stored block, the copy of first block). Since inflate tries
+   to fetch the CRC just after the first block, and the real CRC is placed
+   after the second block. So inflate fails because of CRC unmatched.
+   I think hardware guys should check how to generate dynamic block that is
+   defined in rfc1951.txt.
+   By the way, IBM could support 6 level compression. But Hisilicon could only
+   support 1 level compression.
+
+ * test_inflate() adopts the workaround to use software decompression. Since
+   the test case won't tell inflate the exact length. Software inflation could
+   know the end because it could parse each byte to know the end. Hardware
+   couldn't do the same thing.
+   In original, I tried to make hardware to support it with strm->avail_in
+   equal to 0. Need to check whethem this logic could be adapted without
+   impacting other cases.
+
+ * test_inflate_sync() adopts the workaround to use software decompression.
+   The test case tries to replace compressed data with false value. Then it
+   uses inflateSync() to skip the damaged data. Hardware can't implement
+   this feature.
+   
+ * When run minigzip application, fail to compress large file (20MB size). Only
+   succeed to compress small file.
+
+ * When run minigzip application, fail to decompress large file (9MB size). Only
+   succeed to decompres small file.
+
+ * When use gdb to debug minigzip application, system hang.
+
+ * When libz.so is installed, some external application depends on libz can't
+   run successfully.
+
+
+TODO
+----
+
+ * Fix issues in minigzip.
+
+ * Clean code.
+
+ * Although copied libz.so into /usr/lib/aarch64-linux-gnu directory, gzip is
+   still running without warpdrive. Need to check the reason. May it uses
+   the static libary.
