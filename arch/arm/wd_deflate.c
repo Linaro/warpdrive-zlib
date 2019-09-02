@@ -108,11 +108,19 @@ recv_again:
     if (param->alg_type == HW_ZLIB) {
         param->pending_size -= 4;
         param->next_out -= 4;
+#ifdef ZLIB_COMPAT
         strm->adler = adler32(strm->adler, param->in, recv_msg->consumed);
+#else
+        strm->adler = zng_adler32(strm->adler, param->in, recv_msg->consumed);
+#endif
     } else if (param->alg_type == HW_GZIP) {
         param->pending_size -= 8;
         param->next_out -= 8;
+#ifdef ZLIB_COMPAT
         strm->adler = crc32(strm->adler, param->in, recv_msg->consumed);
+#else
+        strm->adler = zng_crc32(strm->adler, param->in, recv_msg->consumed);
+#endif
     }
     if (strm->avail_in == 0) {
         param->next_in = param->in;
