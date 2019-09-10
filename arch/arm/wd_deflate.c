@@ -44,8 +44,8 @@ static int hisi_deflate(PREFIX3(streamp) strm,
     msg.dest_addr_h = pa >> 32;
     msg.input_data_length = param->stalled_size;
     msg.dest_avail_out = param->avail_out;
-    msg.stream_ctx_addr_l = (__u64)param->ctx_buf & 0xffffffff;
-    msg.stream_ctx_addr_h = (__u64)param->ctx_buf >> 32;
+    msg.stream_ctx_addr_l = (__u64)param->ctx_pa & 0xffffffff;
+    msg.stream_ctx_addr_h = (__u64)param->ctx_pa >> 32;
     if (!param->stream_pos) {
         msg.checksum = strm->adler;
         if (param->alg_type == HW_GZIP)
@@ -413,10 +413,11 @@ void ZLIB_INTERNAL wd_deflate_reset(PREFIX3(streamp) strm, uInt size)
     if (wd_state->q.dev_flags & UACCE_DEV_NOIOMMU) {
         param->in_pa   = wd_get_pa_from_va(&wd_state->q, param->in);
 	param->out_pa  = wd_get_pa_from_va(&wd_state->q, param->out);
-	param->ctx_buf = wd_get_pa_from_va(&wd_state->q, param->ctx_buf);
+	param->ctx_pa  = wd_get_pa_from_va(&wd_state->q, param->ctx_buf);
     } else {
 	param->in_pa   = param->in;
         param->out_pa  = param->out;
+        param->ctx_pa  = param->ctx_buf;
     }
     return;
 
@@ -432,4 +433,7 @@ void ZLIB_INTERNAL wd_deflate_end(PREFIX3(streamp) strm)
 
     if (param->hw_avail)
         wd_release_queue(&wd_state->q);
+    smm_free(param->ss_buf, param->in);
+    smm_free(param->ss_buf, param->out);
+    smm_free(param->ss_buf, param->ctx_buf);
 }

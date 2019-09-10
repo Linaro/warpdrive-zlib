@@ -23,6 +23,7 @@ struct hisi_param {
     void *in_pa;
     void *out_pa;
     void *ctx_buf;
+    void *ctx_pa;
     int ctx_dw0;
     int ctx_dw1;
     int ctx_dw2;
