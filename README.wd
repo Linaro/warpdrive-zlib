@@ -78,6 +78,13 @@ Workaround and Failure
  * When libz.so is installed, some external application depends on libz can't
    run successfully.
 
+ * When debugged the failure, downgraded the STREAM_CHUNK to 512 bytes. Then
+   found that the last padding value (ISIZE) were wrong. It was always
+   0xffff0000 even set the input data length as nearly 400 bytes.
+
+ * When debugged by valgrind, it always reported some memory issue with
+   uninitialized value.
+
 
 TODO
 ----
