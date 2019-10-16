@@ -322,6 +322,7 @@ void ZLIB_INTERNAL wd_inflate_reset(PREFIX3(streamp) strm, uInt size)
     struct hisi_param *param = &wd_state->param;
     struct hisi_qm_priv *priv;
     struct wd_capa *capa = &wd_state->q.capa;
+    int dev_flags;
     int ret;
     size_t ss_region_size;
 
@@ -347,23 +348,30 @@ void ZLIB_INTERNAL wd_inflate_reset(PREFIX3(streamp) strm, uInt size)
     param->hw_avail = 1;
     param->hw_enabled = 1;
 
+    dev_flags = wd_state->q.dev_flags;
     ss_region_size = 4096 + ASIZE * 2 + HW_CTX_SIZE;
-    param->ss_buf = wd_reserve_memory(&wd_state->q, ss_region_size);
-    if (!param->ss_buf) {
-        fprintf(stderr, "Fail to reserve %ld DMA buffer\n");
-	goto out_queue;
+    if (dev_flags & UACCE_DEV_SVA) {
+        param->in = malloc(ASIZE);
+        param->out = malloc(ASIZE);
+        param->ctx_buf = malloc(HW_CTX_SIZE);
+    } else {
+        param->ss_buf = wd_reserve_memory(&wd_state->q, ss_region_size);
+        if (!param->ss_buf) {
+            fprintf(stderr, "Fail to reserve %ld DMA buffer\n");
+            goto out_queue;
+        }
+
+        ret = smm_init(param->ss_buf, ss_region_size, 0xf);
+        if (ret)
+            goto out_queue;
+
+        param->in = smm_alloc(param->ss_buf, ASIZE);
+        param->out = smm_alloc(param->ss_buf, ASIZE);
+        param->ctx_buf = smm_alloc(param->ss_buf, HW_CTX_SIZE);
     }
-
-    ret = smm_init(param->ss_buf, ss_region_size, 0xf);
-    if (ret)
-        goto out_queue;
-
-    param->in = smm_alloc(param->ss_buf, ASIZE);
-    param->out = smm_alloc(param->ss_buf, ASIZE);
-    param->ctx_buf = smm_alloc(param->ss_buf, HW_CTX_SIZE);
     wd_reset_param(wd_state);
 
-    if (wd_state->q.dev_flags & UACCE_DEV_NOIOMMU) {
+    if (dev_flags & UACCE_DEV_NOIOMMU) {
         param->in_pa   = wd_get_pa_from_va(&wd_state->q, param->in);
 	param->out_pa  = wd_get_pa_from_va(&wd_state->q, param->out);
 	param->ctx_buf = wd_get_pa_from_va(&wd_state->q, param->ctx_buf);
